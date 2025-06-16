@@ -3,7 +3,6 @@ import time
 import triton
 import triton.language as tl
 
-N = 98432
 # DEVICE = triton.runtime.driver.active.get_active_torch_device()  # Specify the device to use
 
 # 使用triton实现vector addition
@@ -15,6 +14,10 @@ def vec_add_kernel(a_ptr, b_ptr, c_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     start_index = pid * BLOCK_SIZE
     # Create a mask to handle the case where n_elements is not a multiple of BLOCK_SIZE
     mask = start_index + tl.arange(0, BLOCK_SIZE) < n_elements
+
+    # #prefetch elements from a and b
+    # tl.prefetch(a_ptr + start_index + tl.arange(0, BLOCK_SIZE), mask=mask)
+    # tl.prefetch(b_ptr + start_index + tl.arange(0, BLOCK_SIZE), mask=mask)
 
     # Load elements from a and b
     a = tl.load(a_ptr + start_index + tl.arange(0, BLOCK_SIZE), mask=mask)
@@ -36,16 +39,3 @@ def vec_add(a, b):
     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
     vec_add_kernel[grid](a, b, c, n_elements, BLOCK_SIZE=1024)
     return c
-
-
-a = torch.randn(N, dtype=torch.float32, device='cuda')
-b = torch.randn(N, dtype=torch.float32, device='cuda')
-# Vector addition using Triton
-torch.cuda.synchronize()  # Ensure all previous operations are complete
-time_start = time.time()
-c = vec_add(a, b)
-torch.cuda.synchronize()  # Ensure the addition is complete
-# Print the time taken for vector addition
-print(f"Time taken for vector addition: {time.time() - time_start:.6f} seconds")
-# Verify the result
-assert torch.allclose(c, a + b), "The result is incorrect!"
